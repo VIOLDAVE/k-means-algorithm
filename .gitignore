@@ -1,0 +1,14 @@
+k-means+/
+__pycache__/
+*.py[cod]
+data/
+*.csv
+*.gz
+*.mat
+report/*.aux
+report/*.log
+report/*.out
+report/*.bbl
+report/*.blg
+report/*.synctex.gz
+.DS_Store
