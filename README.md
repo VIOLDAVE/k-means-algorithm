@@ -1,4 +1,4 @@
-# K-means Initialisation Study
+# K-means Cluster & Initialisation 
 
 A from-scratch implementation of Lloyd's k-means algorithm and k-means++
 initialisation, with repeated-run experiments on synthetic Gaussian blobs and
