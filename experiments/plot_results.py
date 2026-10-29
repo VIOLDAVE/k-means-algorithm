@@ -13,7 +13,8 @@ import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
-# Ensure project root is on sys.path
+# I add the project root so this script can import the project modules when run
+# directly from the experiments directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.kmeans import ScratchKMeans
@@ -22,7 +23,10 @@ from src.datasets import generate_synthetic_separable, load_mnist_subset
 
 def plot_exploratory_projections():
     """Recreate the notebook's PCA and t-SNE MNIST label visualisations."""
+    # I use a fixed sample and random seed so these visual comparisons are repeatable.
     X, y = load_mnist_subset(n_samples=3000, seed=42)
+    # PCA shows the strongest global directions of variation; t-SNE emphasizes
+    # local neighborhoods, so the two views reveal different structure.
     pca = PCA(n_components=2, random_state=42)
     X_pca = pca.fit_transform(X)
     X_tsne = TSNE(
@@ -34,6 +38,7 @@ def plot_exploratory_projections():
     fig, (ax_pca, ax_tsne) = plt.subplots(
         1, 2, figsize=(14, 6), layout="constrained"
     )
+    # I keep the same class colors in both panels so digit groups are easy to compare.
     scatter_pca = ax_pca.scatter(
         X_pca[:, 0], X_pca[:, 1], c=y, cmap="tab10", vmin=-0.5, vmax=9.5,
         alpha=0.6, s=10
@@ -57,6 +62,7 @@ def plot_exploratory_projections():
         location="right",
         label="Digit class",
     )
+    # I create the output folder when needed so the script works from a fresh checkout.
     figures_dir = Path("report/figures")
     figures_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(figures_dir / "mnist_pca_tsne.pdf", bbox_inches="tight")
@@ -68,14 +74,19 @@ def plot_exploratory_projections():
 
 
 def plot_boxplots():
+    # These plots use experiment results rather than rerunning the benchmark.
     results_path = Path("experiments/results.json")
     if not results_path.exists():
+        # I skip only these plots when results are missing; the other figures can
+        # still be generated independently.
         print("Warning: experiments/results.json not found. Run run_experiments.py first.")
         return
 
+    # Each dataset contains repeated runs for both initialisation strategies.
     with open(results_path, "r") as f:
         results = json.load(f)
 
+    # I keep labels and dataset keys in matching order for the four-panel figures.
     datasets = ["separable", "overlapping", "high_dimensional", "mnist"]
     names = [
         "Separable (d=2, k=5)",
@@ -87,7 +98,8 @@ def plot_boxplots():
     figures_dir = Path("report/figures")
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Inertia Distribution Boxplots
+    # I compare final inertia distributions to show how initialization affects
+    # the quality and variability of the resulting clusters.
     fig, axes = plt.subplots(1, 4, figsize=(18, 4.5))
     for ax, ds, title in zip(axes, datasets, names):
         rnd = results[ds]["random"]["raw_inertias"]
@@ -102,7 +114,8 @@ def plot_boxplots():
     plt.savefig(figures_dir / "inertia_distributions.png", dpi=300, bbox_inches="tight")
     plt.close()
 
-    # 2. Convergence Iterations Boxplots
+    # I also compare iteration counts because a lower final inertia does not
+    # necessarily mean that a method converges in fewer steps.
     fig, axes = plt.subplots(1, 4, figsize=(18, 4.5))
     for ax, ds, title in zip(axes, datasets, names):
         rnd_it = results[ds]["random"]["raw_iterations"]
@@ -128,9 +141,12 @@ def plot_voronoi_comparison():
     figures_dir = Path("report/figures")
     figures_dir.mkdir(parents=True, exist_ok=True)
 
+    # I use a fixed dataset so differences between the panels come from
+    # initialization, not from different generated points.
     X, _ = generate_synthetic_separable(n_samples=1500, k=5, seed=42)
 
-    # Search for a representative sub-optimal local minimum (phi ~ 4030-4065 from results.json)
+    # Random initialization can settle in different local minima. I search a
+    # bounded seed range for a representative split/merge result from the experiments.
     bad_model = None
     for seed in range(2000, 2200):
         model = ScratchKMeans(n_clusters=5, init="random", random_state=seed).fit(X)
@@ -138,18 +154,21 @@ def plot_voronoi_comparison():
             bad_model = model
             break
 
-    # Seed 2000 for k-means++ hits the global minimum (phi = 1636.71)
+    # I use the known successful seed to make the k-means++ comparison reproducible.
     good_model = ScratchKMeans(n_clusters=5, init="kmeans++", random_state=2000).fit(X)
 
     if bad_model is None:
         print("Warning: Could not isolate a split/merge run within seed range.")
         return
 
-    # Build 2D evaluation grid for Voronoi decision regions
+    # I evaluate the nearest-centroid rule over a regular grid to visualize the
+    # Voronoi regions, including areas between the observed data points.
     x_min, x_max = X[:, 0].min() - 1.5, X[:, 0].max() + 1.5
     y_min, y_max = X[:, 1].min() - 1.5, X[:, 1].max() + 1.5
     xx, yy = np.meshgrid(np.linspace(x_min, x_max, 400), np.linspace(y_min, y_max, 400))
     grid = np.c_[xx.ravel(), yy.ravel()]
+    # The distance helper can reuse each grid point's squared norm for every
+    # centroid, avoiding repeated work across the full grid.
     g_sq = np.sum(grid**2, axis=1, keepdims=True)
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
@@ -160,6 +179,8 @@ def plot_voronoi_comparison():
     ]
 
     for ax, model, title in zip(axes, models, titles):
+        # I assign each grid point to its closest centroid; those assignments
+        # define the colored decision regions shown below.
         dist_sq = model._compute_sq_distances(grid, model.centroids, g_sq)
         Z = np.argmin(dist_sq, axis=1).reshape(xx.shape)
 
@@ -197,6 +218,8 @@ def plot_voronoi_comparison():
 
 
 def main():
+    # I generate each figure group in one place so the full report can be
+    # refreshed by running this script once.
     plot_exploratory_projections()
     plot_boxplots()
     plot_voronoi_comparison()

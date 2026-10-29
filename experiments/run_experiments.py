@@ -45,6 +45,7 @@ def _run_single_trial(
     X: np.ndarray,
     reference_labels: Optional[np.ndarray],
 ) -> tuple[float, int, float, np.ndarray, Optional[float], Optional[float]]:
+    # I time only model fitting so each trial reports the clustering runtime.
     t0 = time.perf_counter()
     model = ScratchKMeans(n_clusters=k, init=init, random_state=seed)
     model.fit(X)
@@ -52,6 +53,8 @@ def _run_single_trial(
     if model.labels_ is None:
         raise RuntimeError("K-means fit completed without producing labels.")
     if reference_labels is None:
+        # Synthetic benchmarks may omit reference labels, so external metrics
+        # are unavailable for those runs.
         external_ari, external_nmi = None, None
     else:
         external_scores = evaluate_external_labels(model.labels_, reference_labels)
@@ -73,6 +76,8 @@ def run_benchmark(
     reference_labels: Optional[np.ndarray] = None,
     bootstrap_seed: int = 42,
 ):
+    # I keep results grouped by initialization and retain raw trials so the
+    # summary statistics and later figures can be reproduced.
     results: dict[str, dict[str, object]] = {}
     inertias_by_init: dict[str, list[float]] = {}
 
@@ -81,6 +86,8 @@ def run_benchmark(
         "kmeans++",
     )
     for init in initializers:
+        # The same seed range per strategy makes trial setup consistent, while
+        # separate initializers still use their own random-state sequence.
         seeds = [2000 + i for i in range(n_trials)]
         parallel_out = cast(
             list[tuple[float, int, float, np.ndarray, Optional[float], Optional[float]]],
@@ -97,6 +104,7 @@ def run_benchmark(
         external_aris = [item[4] for item in parallel_out if item[4] is not None]
         external_nmis = [item[5] for item in parallel_out if item[5] is not None]
 
+        # I summarize each strategy and retain raw values for later distribution plots.
         summary = cast(dict[str, object], summarize_runs(inertias, iterations, runtimes))
         summary["pairwise_ari_stability"] = evaluate_stability(labels)
         summary["raw_inertias"] = inertias
@@ -119,7 +127,8 @@ def run_benchmark(
             seed=bootstrap_seed,
         ),
     )
-    # Statistical significance tests
+    # I compare mean inertias with a bootstrap interval and run the planned
+    # hypothesis tests on the independent trial outcomes.
     results["hypothesis_tests"] = cast(
         dict[str, object],
         conduct_hypothesis_tests(
@@ -130,6 +139,8 @@ def run_benchmark(
 
 
 def main():
+    # I benchmark data with increasing difficulty and keep their feature/cluster
+    # settings explicit so results can be compared across datasets.
     benchmarks = {
         "separable": generate_synthetic_separable(n_samples=1500, k=5),
         "overlapping": generate_synthetic_overlapping(n_samples=1500, k=5),
@@ -141,6 +152,7 @@ def main():
 
     experiment_records = {}
     for index, (name, (X, y)) in enumerate(benchmarks.items()):
+        # MNIST has ten digit classes; each synthetic benchmark has five clusters.
         k = 10 if name == "mnist" else 5
         print(f"Running benchmark: {name} (n={X.shape[0]}, d={X.shape[1]}, k={k})...")
         experiment_records[name] = run_benchmark(
@@ -151,6 +163,8 @@ def main():
             bootstrap_seed=4200 + index,
         )
 
+    # I adjust the per-dataset Mann-Whitney p-values together because multiple
+    # hypothesis tests are performed across the benchmark suite.
     raw_p_values = {
         name: cast(
             dict[str, float],
@@ -165,6 +179,8 @@ def main():
         ] = adjusted_p
 
     cache_path = Path("data/openml/openml.org/data/v1/download/52667/mnist_784.arff.gz")
+    # I record cache timing and package versions to help explain differences
+    # when the experiment is rerun in another environment.
     cache_timestamp = None
     if cache_path.exists():
         cache_timestamp = datetime.fromtimestamp(
@@ -185,6 +201,8 @@ def main():
         "bootstrap_seed_base": 4200,
     }
 
+    # Store both raw trials and metadata so plotting and reporting can be done
+    # without repeating the computationally expensive benchmarks.
     with open("experiments/results.json", "w") as f:
         json.dump(experiment_records, f, indent=2)
 
